@@ -1,0 +1,7 @@
+#ifndef VULKANTUTORIAL_LIBRARY_H
+#define VULKANTUTORIAL_LIBRARY_H
+
+
+void hello();
+
+#endif //VULKANTUTORIAL_LIBRARY_H
