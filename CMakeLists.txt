@@ -17,6 +17,10 @@ target_include_directories(VulkanTutorial PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_include_directories(VulkanTutorial PUBLIC ./include)
 target_link_libraries(VulkanTutorial PRIVATE SDL3::SDL3)
 
-add_executable(VulkanTutorialTest
+
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    add_executable(VulkanTutorialTest
         test/VulkanTutorial/test.cpp)
-target_include_directories(VulkanTutorialTest PUBLIC include)
+    target_include_directories(VulkanTutorialTest PUBLIC include)
+    target_compile_definitions(VulkanTutorial PUBLIC NDEBUG)
+endif ()

@@ -3,21 +3,29 @@
 //
 
 #define SDL_MAIN_USE_CALLBACKS
-#include <stdlib.h>
 #include <SDL3/SDL_main.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <VulkanTutorial/vulkanTutorial.h>
 
 
 struct AppState {
     SDL_Window *window;
     SDL_Renderer *renderer;
+    VkSurfaceKHR* surface;
 };
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_Init(SDL_INIT_VIDEO);
     auto *state = new AppState;
-    SDL_CreateWindowAndRenderer("HONK", 800, 600, 0, &state->window, &state->renderer);
+    Uint32 count = 0;
+    char const* const *extensions = SDL_Vulkan_GetInstanceExtensions(&count);
+    vkt vt;
+    vt.init(extensions, count);
+
+    SDL_CreateWindowAndRenderer("Vulkan", 800, 600, SDL_WINDOW_VULKAN, &state->window, &state->renderer);
+    SDL_Vulkan_CreateSurface(state->window, static_cast<VkInstance>(*vt.getInstance()), nullptr, state->surface);
     *appstate = state;
     return SDL_APP_CONTINUE;
 }
