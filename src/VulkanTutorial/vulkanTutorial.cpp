@@ -23,15 +23,16 @@ void vkt::init(char const* const *_extensions, uint32_t _count) {
     if (!CreatePhysicalDevice(physicalDevice, instance)) {
         return;
     }
-    /*if (!CreateDevice(device, physicalDevice)) {
+    if (!CreateDevice(device, graphicsQueue, physicalDevice, validationLayers)) {
         return;
-    }*/
+    }
 }
 
 void vkt::update() {
 }
 
 void vkt::cleanup() {
+    device.destroy();
 }
 vk::Instance* vkt::getInstance() {
     return flags & VKT_INIT_CREATE_INSTANCE ? &instance : nullptr;
@@ -118,7 +119,36 @@ bool vkt::CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_in
     LOG("Vulkan physical device created");
     return true;
 }
-//[[nodiscard]] bool vkt::CreateDevice(vk::Device &_out, const vk::PhysicalDevice &_physicalDevice) {}
+[[nodiscard]] bool vkt::CreateDevice(vk::Device &_out, vk::Queue &_out2, const vk::PhysicalDevice &_physicalDevice, std::vector<const char*> const &_validationLayers) {
+    LOG("Creating logical device");
+    QueueFamilyIndices indices;
+    FindQueueFamilies(indices, _physicalDevice);
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo;
+    deviceQueueCreateInfo.sType = vk::StructureType::eDeviceQueueCreateInfo;
+    deviceQueueCreateInfo.queueCount = 1;
+    deviceQueueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+    float queuePriority = 1.0f;
+    deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+
+    vk::PhysicalDeviceFeatures deviceFeatures {};
+    vk::DeviceCreateInfo deviceCreateInfo;
+    deviceCreateInfo.sType = vk::StructureType::eDeviceCreateInfo;
+    deviceCreateInfo.enabledExtensionCount = 0;
+#ifdef NDEBUG
+    deviceCreateInfo.enabledLayerCount = _validationLayers.size();
+    deviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+#else
+    deviceCreateInfo.enabledLayerCount = 0;
+#endif
+    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+    deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+    _out = _physicalDevice.createDevice(deviceCreateInfo); //TODO: FIGURE OUT HOW TO DO ERROR CHECKING WITH CONSTRUCTORS
+    _out2 = _out.getQueue(indices.graphicsFamily.value(), 0);
+    LOG("Logical device created");
+    return true;
+}
+
 [[nodiscard]] bool vkt::CheckValidationLayerSupport(std::vector<const char*> const &_validationLayers) {
     uint32_t layerCount;
     if (vk::enumerateInstanceLayerProperties(&layerCount, nullptr) != vk::Result::eSuccess) {

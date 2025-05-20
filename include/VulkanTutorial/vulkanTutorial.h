@@ -19,10 +19,12 @@ class vkt {
     uint32_t flags = 0;
     vk::Instance instance;
     vk::PhysicalDevice physicalDevice;
+    vk::Device device;
+    vk::Queue graphicsQueue;
 
     static bool CreateInstance(vk::Instance &_out,char const* const *_extensions, uint32_t _count, std::vector<const char*> const &_validationLayers);
     static bool CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_instance);
-    //static [[nodiscard]] bool CreateDevice(vk::Device &_out, const vk::PhysicalDevice &_physicalDevice);
+    static bool CreateDevice(vk::Device &_out, vk::Queue &_out2,const vk::PhysicalDevice &_physicalDevice, std::vector<const char*> const &_validationLayers);
     [[nodiscard]] static bool CheckValidationLayerSupport(std::vector<const char*> const &_validationLayers);
     [[nodiscard]] static bool CheckPhysicalDeviceSupport(vk::PhysicalDevice const &physicalDevice);
     static bool FindQueueFamilies(vkt::QueueFamilyIndices &_out, vk::PhysicalDevice const &physicalDevice);
