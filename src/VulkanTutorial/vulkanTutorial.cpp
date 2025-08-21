@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <ostream>
+#include <set>
 #include <vulkan/vulkan.hpp>
 #define VKT_INIT_CREATE_INSTANCE 0x1
 
@@ -15,15 +16,18 @@
 
 
 //TODO: do we need flags for init phase anymore?
-void vkt::init(char const* const *_extensions, uint32_t _count) {
-    if (!CreateInstance(instance, _extensions, _count, validationLayers)) {
+void vkt::init(char const* const *_extensions, uint32_t _count, SDL_Window *_window) {
+    if (!CreateInstance(_extensions, _count)) {
         //Errors are already reported by other layer, just exit
         return;
     }
-    if (!CreatePhysicalDevice(physicalDevice, instance)) {
+    if (!CreateSurface(*_window)) {
         return;
     }
-    if (!CreateDevice(device, graphicsQueue, physicalDevice, validationLayers)) {
+    if (!CreatePhysicalDevice()) {
+        return;
+    }
+    if (!CreateDevice()) {
         return;
     }
 }
@@ -38,10 +42,14 @@ vk::Instance* vkt::getInstance() {
     return flags & VKT_INIT_CREATE_INSTANCE ? &instance : nullptr;
 }
 vk::Device* vkt::getDevice() {
-    return nullptr;
+    return &device;
 }
 
-bool vkt::CreateInstance(vk::Instance &_out,char const* const *_extensions, uint32_t _count, std::vector<const char*> const &_validationLayers) {
+VkSurfaceKHR * vkt::getSurface() {
+    return &surface;
+}
+
+bool vkt::CreateInstance(char const* const *_extensions, uint32_t _count) {
     LOG("Creating vulkan instance");
     vk::ApplicationInfo appInfo;
     appInfo.sType = vk::StructureType::eApplicationInfo;
@@ -70,29 +78,29 @@ bool vkt::CreateInstance(vk::Instance &_out,char const* const *_extensions, uint
     for (auto & extension : extensions) {
         std::cout << extension.extensionName << std::endl;
     }
-    if (!CheckValidationLayerSupport(_validationLayers)) {
+    if (!CheckValidationLayerSupport(validationLayers)) {
         std::cerr << "Validation layers requested, but not available\n";
         return false;
     }
     else {
         std::cout << "Validation layers available" << std::endl;
     }
-    instanceCreateInfo.enabledLayerCount = _validationLayers.size();
-    instanceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+    instanceCreateInfo.enabledLayerCount = validationLayers.size();
+    instanceCreateInfo.ppEnabledLayerNames = validationLayers.data();
 #else
     instanceCreateInfo.enabledLayerCount = 0;
     instanceCreateInfo.ppEnabledLayerNames = nullptr;
 #endif
     instanceCreateInfo.enabledExtensionCount = _count;
     instanceCreateInfo.ppEnabledExtensionNames = _extensions;
-    _out = vk::createInstance(instanceCreateInfo);
+    instance = vk::createInstance(instanceCreateInfo);
     LOG("Vulkan instance created");
     return true;
 }
-bool vkt::CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_instance) {
+bool vkt::CreatePhysicalDevice() {
     LOG("Creating vulkan physical device");
     uint32_t physicalDeviceCount;
-    if (_instance.enumeratePhysicalDevices(&physicalDeviceCount, nullptr) != vk::Result::eSuccess) {
+    if (instance.enumeratePhysicalDevices(&physicalDeviceCount, nullptr) != vk::Result::eSuccess) {
         std::cerr << "Unable to enumerate physical devices\n";
         return false;
     }
@@ -101,7 +109,7 @@ bool vkt::CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_in
         return false;
     }
     std::vector<vk::PhysicalDevice> physicalDevices(physicalDeviceCount);
-    if (_instance.enumeratePhysicalDevices(&physicalDeviceCount, physicalDevices.data()) != vk::Result::eSuccess) {
+    if (instance.enumeratePhysicalDevices(&physicalDeviceCount, physicalDevices.data()) != vk::Result::eSuccess) {
         std::cerr << "Unable to enumerate physical devices\n";
         return false;
     }
@@ -109,44 +117,53 @@ bool vkt::CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_in
     auto it = physicalDevices.begin();
     //In order to pick, you can also rank them by a score function
     for (; !found && it != physicalDevices.end(); it++) {
+        physicalDevice = *it;
         found = CheckPhysicalDeviceSupport(*it);
     }
     if (!found) {
         std::cerr << "No suitable physical device found\n";
         return false;
     }
-    _out = *it;
     LOG("Vulkan physical device created");
     return true;
 }
-[[nodiscard]] bool vkt::CreateDevice(vk::Device &_out, vk::Queue &_out2, const vk::PhysicalDevice &_physicalDevice, std::vector<const char*> const &_validationLayers) {
+[[nodiscard]] bool vkt::CreateDevice() {
     LOG("Creating logical device");
-    QueueFamilyIndices indices;
-    FindQueueFamilies(indices, _physicalDevice);
-    vk::DeviceQueueCreateInfo deviceQueueCreateInfo;
-    deviceQueueCreateInfo.sType = vk::StructureType::eDeviceQueueCreateInfo;
-    deviceQueueCreateInfo.queueCount = 1;
-    deviceQueueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-    float queuePriority = 1.0f;
-    deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
-
+    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+    for (auto i : uniqueQueueFamilies) {
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo;
+        deviceQueueCreateInfo.sType = vk::StructureType::eDeviceQueueCreateInfo;
+        deviceQueueCreateInfo.queueCount = 1;
+        deviceQueueCreateInfo.queueFamilyIndex = i;
+        float queuePriority = 1.0f;
+        deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(deviceQueueCreateInfo);
+    }
     vk::PhysicalDeviceFeatures deviceFeatures {};
     vk::DeviceCreateInfo deviceCreateInfo;
     deviceCreateInfo.sType = vk::StructureType::eDeviceCreateInfo;
     deviceCreateInfo.enabledExtensionCount = 0;
 #ifdef NDEBUG
-    deviceCreateInfo.enabledLayerCount = _validationLayers.size();
-    deviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+    deviceCreateInfo.enabledLayerCount = validationLayers.size();
+    deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
 #else
     deviceCreateInfo.enabledLayerCount = 0;
 #endif
-    deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
+    deviceCreateInfo.queueCreateInfoCount = queueCreateInfos.size();
+    deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
     deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-    _out = _physicalDevice.createDevice(deviceCreateInfo); //TODO: FIGURE OUT HOW TO DO ERROR CHECKING WITH CONSTRUCTORS
-    _out2 = _out.getQueue(indices.graphicsFamily.value(), 0);
+    device = physicalDevice.createDevice(deviceCreateInfo); //TODO: FIGURE OUT HOW TO DO ERROR CHECKING WITH CONSTRUCTORS
+    graphicsQueue = device.getQueue(indices.graphicsFamily.value(), 0);
+    presentationQueue = device.getQueue(indices.presentFamily.value(), 0);
     LOG("Logical device created");
     return true;
+}
+
+bool vkt::CreateSurface(SDL_Window& window) {
+    LOG("Creating surface");
+    return SDL_Vulkan_CreateSurface(&window, static_cast<VkInstance>(instance), nullptr, &surface);
+    LOG("Surface created");
 }
 
 [[nodiscard]] bool vkt::CheckValidationLayerSupport(std::vector<const char*> const &_validationLayers) {
@@ -170,22 +187,24 @@ bool vkt::CreatePhysicalDevice(vk::PhysicalDevice &_out, const vk::Instance &_in
     return layerFound;
 }
 [[nodiscard]] bool vkt::CheckPhysicalDeviceSupport(vk::PhysicalDevice const &physicalDevice) {
-    QueueFamilyIndices indices;
-    FindQueueFamilies(indices, physicalDevice);
+    FindQueueFamilies();
     return indices.graphicsFamily.has_value();
 }
-bool vkt::FindQueueFamilies(QueueFamilyIndices &_out, vk::PhysicalDevice const &physicalDevice) {
-    QueueFamilyIndices indices;
-
+bool vkt::FindQueueFamilies() {
     auto queueFamilies = physicalDevice.getQueueFamilyProperties();
     bool found = false;
+    vk::Bool32 presentSupport = false;
     for (uint32_t i = 0; !found && i < queueFamilies.size(); i++) {
+        if (physicalDevice.getSurfaceSupportKHR(i, surface, &presentSupport) != vk::Result::eSuccess) {
+            throw;
+        }
+        if (presentSupport) {
+            indices.presentFamily = i;
+        }
         if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics) {
             indices.graphicsFamily = i;
         }
         found = indices.isComplete();
     }
-
-    _out = indices;
-    return true;
+    return indices.isComplete();
 }
